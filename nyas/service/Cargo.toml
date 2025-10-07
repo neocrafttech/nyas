@@ -1,0 +1,20 @@
+[package]
+name = "service"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+tokio.workspace = true
+tonic.workspace = true
+prost.workspace = true
+tonic-prost.workspace = true
+storage = { path = "../storage" }
+
+[build-dependencies]
+tonic-prost-build = "0.14.2"

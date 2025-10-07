@@ -1,0 +1,22 @@
+name: Setup Rust Env
+description: "Checkout repo, install protobuf, and make build script executable"
+runs:
+    using: "composite"
+    steps:
+        - uses: actions/checkout@v4
+
+        - name: Update apt
+          run: apt-get update
+          shell: bash
+
+        - name: Install protobuf
+          run: apt-get install -y protobuf-compiler libprotobuf-dev
+          shell: bash
+
+        - name: Install Rust components
+          run: rustup component add rustfmt clippy
+          shell: bash
+ 
+        - name: Make build script executable
+          run: chmod +x ./bolt.sh
+          shell: bash

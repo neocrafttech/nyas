@@ -1,0 +1,17 @@
+[package]
+name = "vecd"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+tonic.workspace = true
+env_logger.workspace = true
+service = { path = "../service" }
+storage = { path = "../storage" }
+tokio.workspace = true

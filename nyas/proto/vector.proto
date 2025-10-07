@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "io.nyas.vector";
+option java_outer_classname = "VectorProto";
+
+package vector;
+
+service VectorDB {
+  rpc InsertVector (InsertVectorRequest) returns (InsertVectorResponse);
+  rpc SearchVector (SearchVectorRequest) returns (SearchVectorResponse);
+}
+
+message InsertVectorRequest {
+  string id = 1;
+  repeated float vector = 2;
+}
+
+message InsertVectorResponse {
+  bool success = 1;
+}
+
+message SearchVectorRequest {
+  repeated float vector = 1;
+  uint32 top_k = 2;
+}
+
+message SearchVectorResponse {
+  repeated string ids = 1;
+  repeated float distances = 2;
+}
