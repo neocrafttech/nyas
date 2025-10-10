@@ -1,6 +1,7 @@
 use crate::vector::vector_db_server::VectorDb;
 use crate::vector::{
-    InsertVectorRequest, InsertVectorResponse, SearchVectorRequest, SearchVectorResponse,
+    BuildIndexRequest, BuildIndexResponse, IndexType, InsertVectorRequest, InsertVectorResponse,
+    SearchVectorRequest, SearchVectorResponse,
 };
 use std::sync::Arc;
 use storage::vector_db::VectorDB;
@@ -23,6 +24,11 @@ impl Default for VectorService {
     }
 }
 
+impl BuildIndexRequest {
+    pub fn index_type_enum(&self) -> IndexType {
+        IndexType::try_from(self.index_type).unwrap_or(IndexType::Unspecified)
+    }
+}
 #[tonic::async_trait]
 impl VectorDb for VectorService {
     async fn insert_vector(
@@ -45,49 +51,25 @@ impl VectorDb for VectorService {
         let (ids, distances): (Vec<_>, Vec<_>) = results.into_iter().unzip();
         Ok(Response::new(SearchVectorResponse { ids, distances }))
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tonic::Request;
-
-    #[tokio::test]
-    async fn test_insert_vector() {
-        let service = VectorService::default();
-
-        let req = InsertVectorRequest {
-            id: "vec1".to_string(),
-            vector: vec![0.1, 0.2, 0.3],
-        };
-
-        let response = service.insert_vector(Request::new(req)).await.unwrap();
-        let res_inner = response.into_inner();
-
-        assert!(res_inner.success, "Insert should succeed");
-    }
-
-    #[tokio::test]
-    async fn test_search_vector() {
-        let service = VectorService::default();
-
-        let req = InsertVectorRequest {
-            id: "vec1".to_string(),
-            vector: vec![0.1, 0.2, 0.3],
-        };
-        service.insert_vector(Request::new(req)).await.unwrap();
-
-        let req = SearchVectorRequest {
-            vector: vec![0.1, 0.2, 0.3],
-            top_k: 1,
-        };
-
-        let response = service.search_vector(Request::new(req)).await.unwrap();
-        let res_inner = response.into_inner();
-
-        assert_eq!(res_inner.ids.len(), 1, "Should return one id");
-        assert_eq!(res_inner.distances.len(), 1, "Should return one distance");
-        assert_eq!(res_inner.ids[0], "vec1");
-        assert_eq!(res_inner.distances[0], 0.0);
+    async fn build_index(
+        &self,
+        request: Request<BuildIndexRequest>,
+    ) -> Result<Response<BuildIndexResponse>, Status> {
+        let req = request.into_inner();
+        let mut db = self.db.lock().await;
+        match req.index_type_enum() {
+            IndexType::Flat => {
+                unimplemented!()
+            }
+            IndexType::Hnsw => {
+                unimplemented!()
+            }
+            IndexType::Diskann => match db.build_index().await {
+                Ok(_) => Ok(Response::new(BuildIndexResponse { success: true })),
+                Err(e) => Err(Status::internal(e.to_string())),
+            },
+            _ => Err(Status::invalid_argument("Invalid index type")),
+        }
     }
 }

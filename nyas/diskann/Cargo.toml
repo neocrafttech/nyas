@@ -1,5 +1,5 @@
 [package]
-name = "storage"
+name = "diskann"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -10,6 +10,8 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-hnsw_rs.workspace = true
-uuid.workspace = true
-diskann = { path = "../diskann" }
+lru.workspace = true
+memmap2.workspace = true
+rand.workspace = true
+tokio.workspace = true
+ordered-float.workspace = true

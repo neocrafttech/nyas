@@ -9,6 +9,14 @@ package vector;
 service VectorDB {
   rpc InsertVector (InsertVectorRequest) returns (InsertVectorResponse);
   rpc SearchVector (SearchVectorRequest) returns (SearchVectorResponse);
+  rpc BuildIndex (BuildIndexRequest) returns (BuildIndexResponse);
+}
+
+enum IndexType {
+  INDEX_TYPE_UNSPECIFIED = 0;
+  INDEX_TYPE_FLAT = 1;   // Brute-force search
+  INDEX_TYPE_HNSW = 2;   // Hierarchical navigable small world
+  INDEX_TYPE_DISKANN = 3; // Disk-based ANN
 }
 
 message InsertVectorRequest {
@@ -28,4 +36,12 @@ message SearchVectorRequest {
 message SearchVectorResponse {
   repeated string ids = 1;
   repeated float distances = 2;
+}
+
+message BuildIndexRequest {
+  IndexType index_type = 1;
+}
+
+message BuildIndexResponse {
+  bool success = 1;
 }

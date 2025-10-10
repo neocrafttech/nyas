@@ -1,3 +1,4 @@
+use diskann::index_builder::build_index;
 use hnsw_rs::prelude::*;
 use std::collections::HashMap;
 
@@ -27,15 +28,12 @@ impl VectorDB {
     }
 
     pub fn insert(&mut self, id: String, vector: Vec<f32>) {
-        // Get or create index for this id
         let idx = self.next_idx;
         self.next_idx += 1;
 
-        // Store mappings
         self.id_to_idx.insert(id.clone(), idx);
         self.idx_to_id.insert(idx, id.clone());
 
-        // Insert into HNSW with usize index
         self.hnsw.insert((&vector, idx));
         self.storage.insert(id, vector);
     }
@@ -46,11 +44,16 @@ impl VectorDB {
         results
             .into_iter()
             .filter_map(|neighbor| {
-                // Map usize index back to String id
                 self.idx_to_id
                     .get(&neighbor.d_id)
                     .map(|id| (id.clone(), neighbor.distance))
             })
             .collect()
+    }
+
+    pub async fn build_index(&mut self) -> std::io::Result<()> {
+        let vec_refs: Vec<&Vec<f32>> = self.storage.values().collect();
+
+        build_index(&vec_refs, 256, "vectors.bin", "graph.bin").await
     }
 }
