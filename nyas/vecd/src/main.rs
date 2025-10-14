@@ -1,8 +1,12 @@
+use mimalloc::MiMalloc;
 use service::VectorService;
 use service::vector;
 use std::sync::Arc;
 use storage::vector_db::VectorDB;
 use tokio::sync::Mutex;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

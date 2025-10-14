@@ -10,8 +10,9 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-tonic.workspace = true
 env_logger.workspace = true
+mimalloc.workspace = true
+tokio.workspace = true
+tonic.workspace = true
 service = { path = "../service" }
 storage = { path = "../storage" }
-tokio.workspace = true
