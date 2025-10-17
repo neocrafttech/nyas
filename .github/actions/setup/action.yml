@@ -16,7 +16,11 @@ runs:
         - name: Install Rust components
           run: rustup component add rustfmt clippy
           shell: bash
- 
+
+        - name: Cache rust packages
+          if: ${{ !env.ACT }}
+          uses: swatinem/rust-cache@v2.7.7
+
         - name: Make build script executable
           run: chmod +x ./bolt.sh
           shell: bash

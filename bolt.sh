@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 set -e
 
+RUST_VERSION="1.91.0"
+
 setup_rust(){
     echo "[INFO] Checking Rust installation..."
     if command -v rustc >/dev/null 2>&1; then
         CURRENT_VERSION=$(rustc --version | awk '{print $2}')
         echo "[INFO] Found Rust version $CURRENT_VERSION"
-        if [ "$CURRENT_VERSION" != "1.90.0" ]; then
-            echo "[INFO] Updating Rust to 1.90.0..."
-            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.90.0
+        if [ "$CURRENT_VERSION" != "$RUST_VERSION" ]; then
+            echo "[INFO] Updating Rust to $RUST_VERSION..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUST_VERSION
         else
-            echo "[OK] Rust is already 1.90.0"
+            echo "[OK] Rust is already $RUST_VERSION"
         fi
     else
-        echo "[INFO] Rust not found. Installing Rust 1.90.0..."
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.90.0
+        echo "[INFO] Rust not found. Installing Rust $RUST_VERSION..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUST_VERSION
     fi
 
     export PATH="$HOME/.cargo/bin:$PATH"
@@ -58,14 +60,21 @@ test() {
     echo "[OK] Testing completed!"
 }
 
+bench() {
+    echo "[INFO] Running benchmarks..."
+    cargo bench
+    echo "[OK] Benchmarks completed!"
+}
+
 help() {
-    echo "Usage: $0 [setup|check|build|deploy|all|help]"
+    echo "Usage: $0 [setup|check|build|test|bench|all|help]"
     echo
     echo "Commands:"
     echo "  setup   - Install Rust and cargo-nextest"
     echo "  check   - Run cargo check, fmt, and clippy"
     echo "  build   - Only build the workspace (runs check first)"
     echo "  test    - Only run tests"
+    echo "  bench   - Only run benchmarks"
     echo "  all     - Run check, build, and test"
     echo "  help    - Show this help message"
 }
@@ -84,6 +93,9 @@ main() {
             ;;
         test)
             test
+            ;;
+        bench)
+            bench
             ;;
         all)
             setup
