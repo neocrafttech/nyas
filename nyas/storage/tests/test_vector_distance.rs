@@ -151,11 +151,7 @@ test_distance_matrix!(
 #[test]
 fn test_mixed_types_l2_squared() {
     let a_f32 = VectorData::F32(vec![1.0, 2.0, 3.0]);
-    let b_f16 = VectorData::F16(vec![
-        f16::from_f32(4.0),
-        f16::from_f32(5.0),
-        f16::from_f32(6.0),
-    ]);
+    let b_f16 = VectorData::F16(vec![f16::from_f32(4.0), f16::from_f32(5.0), f16::from_f32(6.0)]);
 
     let result = a_f32.distance(&b_f16, MetricType::L2Squared);
     let expected = (1.0 - 4.0f32).powi(2) + (2.0 - 5.0f32).powi(2) + (3.0 - 6.0f32).powi(2);

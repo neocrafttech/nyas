@@ -1,4 +1,3 @@
-use diskann::index_builder::build_index;
 use hnsw_rs::prelude::*;
 use std::collections::HashMap;
 
@@ -44,16 +43,15 @@ impl VectorDB {
         results
             .into_iter()
             .filter_map(|neighbor| {
-                self.idx_to_id
-                    .get(&neighbor.d_id)
-                    .map(|id| (id.clone(), neighbor.distance))
+                self.idx_to_id.get(&neighbor.d_id).map(|id| (id.clone(), neighbor.distance))
             })
             .collect()
     }
 
     pub async fn build_index(&mut self) -> std::io::Result<()> {
-        let vec_refs: Vec<&Vec<f32>> = self.storage.values().collect();
+        //let vec_refs: Vec<&Vec<f32>> = self.storage.values().collect();
 
-        build_index(&vec_refs, 256, "vectors.bin", "graph.bin").await
+        Ok(())
+        //build_index(&vec_refs, 256, "vectors.bin", "graph.bin").await
     }
 }

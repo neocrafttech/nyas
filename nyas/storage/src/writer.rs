@@ -7,10 +7,7 @@ pub enum Writer {
 impl Writer {
     #[inline]
     pub fn put(key: impl Into<Vec<u8>>, value: impl Into<Vec<u8>>) -> Self {
-        Self::Put {
-            key: key.into(),
-            value: value.into(),
-        }
+        Self::Put { key: key.into(), value: value.into() }
     }
 
     #[inline]
@@ -43,15 +40,11 @@ pub struct BatchWriter {
 
 impl BatchWriter {
     pub fn new() -> Self {
-        Self {
-            writers: Vec::new(),
-        }
+        Self { writers: Vec::new() }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            writers: Vec::with_capacity(capacity),
-        }
+        Self { writers: Vec::with_capacity(capacity) }
     }
 
     pub fn put(&mut self, key: impl Into<Vec<u8>>, value: impl Into<Vec<u8>>) {

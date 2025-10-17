@@ -18,9 +18,7 @@ pub struct VectorService {
 
 impl Default for VectorService {
     fn default() -> Self {
-        Self {
-            db: Arc::new(Mutex::new(VectorDB::new(128))),
-        }
+        Self { db: Arc::new(Mutex::new(VectorDB::new(128))) }
     }
 }
 
@@ -32,8 +30,7 @@ impl BuildIndexRequest {
 #[tonic::async_trait]
 impl VectorDb for VectorService {
     async fn insert_vector(
-        &self,
-        request: Request<InsertVectorRequest>,
+        &self, request: Request<InsertVectorRequest>,
     ) -> Result<Response<InsertVectorResponse>, Status> {
         let req = request.into_inner();
         let mut db = self.db.lock().await;
@@ -42,8 +39,7 @@ impl VectorDb for VectorService {
     }
 
     async fn search_vector(
-        &self,
-        request: Request<SearchVectorRequest>,
+        &self, request: Request<SearchVectorRequest>,
     ) -> Result<Response<SearchVectorResponse>, Status> {
         let req = request.into_inner();
         let db = self.db.lock().await;
@@ -53,8 +49,7 @@ impl VectorDb for VectorService {
     }
 
     async fn build_index(
-        &self,
-        request: Request<BuildIndexRequest>,
+        &self, request: Request<BuildIndexRequest>,
     ) -> Result<Response<BuildIndexResponse>, Status> {
         let req = request.into_inner();
         let mut db = self.db.lock().await;

@@ -35,11 +35,8 @@ fn test_entity_key_encoding() {
 
 #[test]
 fn test_node_data() {
-    let mut node = NodeData {
-        version: 1,
-        neighbors: vec![1, 2, 3],
-        vector: Arc::new(VectorData::default()),
-    };
+    let mut node =
+        NodeData { version: 1, neighbors: vec![1, 2, 3], vector: Arc::new(VectorData::default()) };
 
     assert_eq!(node.version, 1);
     assert_eq!(node.increment_version(), 2);

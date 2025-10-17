@@ -8,10 +8,7 @@ use tonic::Request;
 async fn test_insert_vector() {
     let service = VectorService::default();
 
-    let req = InsertVectorRequest {
-        id: "vec1".to_string(),
-        vector: vec![0.1, 0.2, 0.3],
-    };
+    let req = InsertVectorRequest { id: "vec1".to_string(), vector: vec![0.1, 0.2, 0.3] };
 
     let response = service.insert_vector(Request::new(req)).await.unwrap();
     let res_inner = response.into_inner();
@@ -23,16 +20,10 @@ async fn test_insert_vector() {
 async fn test_search_vector() {
     let service = VectorService::default();
 
-    let req = InsertVectorRequest {
-        id: "vec1".to_string(),
-        vector: vec![0.1, 0.2, 0.3],
-    };
+    let req = InsertVectorRequest { id: "vec1".to_string(), vector: vec![0.1, 0.2, 0.3] };
     service.insert_vector(Request::new(req)).await.unwrap();
 
-    let req = SearchVectorRequest {
-        vector: vec![0.1, 0.2, 0.3],
-        top_k: 1,
-    };
+    let req = SearchVectorRequest { vector: vec![0.1, 0.2, 0.3], top_k: 1 };
 
     let response = service.search_vector(Request::new(req)).await.unwrap();
     let res_inner = response.into_inner();

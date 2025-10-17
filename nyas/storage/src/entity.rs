@@ -38,12 +38,10 @@ impl KeySuffix for Id {
 
     #[inline]
     fn decode(raw: &[u8]) -> Result<Self, DecodeError> {
-        raw.try_into()
-            .map(Self::from_be_bytes)
-            .map_err(|_| DecodeError::InvalidLength {
-                expected: mem::size_of::<Id>(),
-                actual: raw.len(),
-            })
+        raw.try_into().map(Self::from_be_bytes).map_err(|_| DecodeError::InvalidLength {
+            expected: mem::size_of::<Id>(),
+            actual: raw.len(),
+        })
     }
 
     #[inline]
@@ -61,12 +59,10 @@ impl KeySuffix for u64 {
 
     #[inline]
     fn decode(raw: &[u8]) -> Result<Self, DecodeError> {
-        raw.try_into()
-            .map(Self::from_be_bytes)
-            .map_err(|_| DecodeError::InvalidLength {
-                expected: mem::size_of::<u64>(),
-                actual: raw.len(),
-            })
+        raw.try_into().map(Self::from_be_bytes).map_err(|_| DecodeError::InvalidLength {
+            expected: mem::size_of::<u64>(),
+            actual: raw.len(),
+        })
     }
 
     #[inline]
@@ -131,11 +127,7 @@ pub struct Entity<K: KeySuffix, V: DeserializeOwned + Send + Serialize + Sync> {
 impl<K: KeySuffix, V: DeserializeOwned + Send + Serialize + Sync> Entity<K, V> {
     /// Create a new entity type with the given prefix
     pub const fn new(prefix: u8) -> Self {
-        Self {
-            prefix,
-            key: PhantomData,
-            val: PhantomData,
-        }
+        Self { prefix, key: PhantomData, val: PhantomData }
     }
 
     /// Get the prefix for this entity type
@@ -175,16 +167,12 @@ impl<K: KeySuffix, V: DeserializeOwned + Send + Serialize + Sync> Entity<K, V> {
     /// Read a single entity by key
     pub fn get(&self, vector_store: &dyn VectorStore, key: impl Borrow<K>) -> Option<V> {
         let raw_key = self.encode_key(key);
-        vector_store
-            .get(&raw_key)
-            .and_then(|raw_val| self.decode_value(&raw_val).ok())
+        vector_store.get(&raw_key).and_then(|raw_val| self.decode_value(&raw_val).ok())
     }
 
     /// Read multiple entities by keys
     pub fn multi_get<'a, KeyItem, Keys>(
-        &self,
-        vector_store: &dyn VectorStore,
-        keys: Keys,
+        &self, vector_store: &dyn VectorStore, keys: Keys,
     ) -> Vec<Option<V>>
     where
         KeyItem: Borrow<K> + 'a,
@@ -207,17 +195,14 @@ impl<K: KeySuffix, V: DeserializeOwned + Send + Serialize + Sync> Entity<K, V> {
 
     /// Iterate over all entities with this prefix
     pub fn iter<'a>(
-        &'a self,
-        vector_store: &'a dyn VectorStore,
+        &'a self, vector_store: &'a dyn VectorStore,
     ) -> impl Iterator<Item = (K, V)> + Send + Sync + 'a {
-        vector_store
-            .iter(self.prefix)
-            .filter_map(move |(raw_key, raw_val)| {
-                // Skip the prefix byte
-                let key = self.decode_key(&raw_key[1..]).ok()?;
-                let val = self.decode_value(&raw_val).ok()?;
-                Some((key, val))
-            })
+        vector_store.iter(self.prefix).filter_map(move |(raw_key, raw_val)| {
+            // Skip the prefix byte
+            let key = self.decode_key(&raw_key[1..]).ok()?;
+            let val = self.decode_value(&raw_val).ok()?;
+            Some((key, val))
+        })
     }
 
     /// Write a single entity
@@ -299,11 +284,7 @@ pub struct NodeData {
 impl NodeData {
     /// Create new node data
     pub fn new(version: u64, neighbors: Vec<Id>, vector: VectorData) -> Self {
-        Self {
-            version,
-            neighbors,
-            vector: Arc::new(vector),
-        }
+        Self { version, neighbors, vector: Arc::new(vector) }
     }
 
     /// Increment version and return the new version

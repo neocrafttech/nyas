@@ -42,9 +42,7 @@ pub enum VectorStoreError {
 pub trait VectorStoreExt: VectorStore {
     /// Read multiple entities by keys
     fn read_entities<K, V, KeysItem, Keys>(
-        &self,
-        ent: &'static Entity<K, V>,
-        keys: Keys,
+        &self, ent: &'static Entity<K, V>, keys: Keys,
     ) -> Vec<Option<V>>
     where
         K: KeySuffix,
@@ -65,8 +63,7 @@ pub trait VectorStoreExt: VectorStore {
         K: KeySuffix,
         V: DeserializeOwned + Send + Serialize + Sync,
     {
-        self.get(&entity.encode_key(key))
-            .and_then(|raw| entity.decode_value(&raw).ok())
+        self.get(&entity.encode_key(key)).and_then(|raw| entity.decode_value(&raw).ok())
     }
 }
 
