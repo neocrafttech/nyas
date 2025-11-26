@@ -1,12 +1,14 @@
+use std::sync::Arc;
+
+use system::vector_db::VectorDB;
+use tokio::sync::Mutex;
+use tonic::{Request, Response, Status};
+
 use crate::vector::vector_db_server::VectorDb;
 use crate::vector::{
     BuildIndexRequest, BuildIndexResponse, IndexType, InsertVectorRequest, InsertVectorResponse,
     SearchVectorRequest, SearchVectorResponse,
 };
-use std::sync::Arc;
-use storage::vector_db::VectorDB;
-use tokio::sync::Mutex;
-use tonic::{Request, Response, Status};
 
 pub mod vector {
     tonic::include_proto!("vector");

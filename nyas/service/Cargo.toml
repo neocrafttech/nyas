@@ -14,7 +14,7 @@ tokio.workspace = true
 tonic.workspace = true
 prost.workspace = true
 tonic-prost.workspace = true
-storage = { path = "../storage" }
+system = { path = "../system" }
 
 [build-dependencies]
 tonic-prost-build = "0.14.2"

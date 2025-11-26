@@ -1,5 +1,5 @@
 [package]
-name = "storage"
+name = "system"
 authors.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -10,17 +10,16 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-hnsw_rs.workspace = true
 uuid.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
-bincode.workspace = true
 rmp-serde.workspace = true
 serde.workspace = true
 nalgebra.workspace = true
 bytemuck.workspace = true
 half.workspace = true
 simsimd.workspace = true
+rkyv.workspace = true
 
 [dev-dependencies]
 rand.workspace = true

@@ -1,11 +1,13 @@
+use std::{fmt, mem};
+
 use bytemuck::cast_slice;
 use half::{bf16, f16};
 use nalgebra::{DVector, DVectorView};
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::mem;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(
+    Clone, Debug, Deserialize, Serialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum VectorData {
     BF16(Vec<bf16>),
     F16(Vec<f16>),

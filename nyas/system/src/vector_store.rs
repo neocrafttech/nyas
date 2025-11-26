@@ -1,12 +1,11 @@
-use serde::{Serialize, de::DeserializeOwned};
-
 use std::borrow::Borrow;
 use std::sync::Arc;
 
-use crate::{
-    entity::{Entity, KeySuffix},
-    writer::{BatchWriter, Writer},
-};
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+use crate::entity::{Entity, KeySuffix};
+use crate::writer::{BatchWriter, Writer};
 
 pub type VectorIter<'a> = Box<dyn Iterator<Item = (Box<[u8]>, Box<[u8]>)> + Send + Sync + 'a>;
 

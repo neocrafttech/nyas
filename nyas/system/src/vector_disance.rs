@@ -1,6 +1,7 @@
+use simsimd::{self, SpatialSimilarity};
+
 use crate::metric::{Distance, MetricType};
 use crate::vector_data::VectorData;
-use simsimd::{self, SpatialSimilarity};
 
 macro_rules! calculate {
     ($method:ident, $a:expr, $b:expr) => {
