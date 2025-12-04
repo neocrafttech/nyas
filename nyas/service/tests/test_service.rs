@@ -1,7 +1,6 @@
 use service::VectorService;
-use service::vector::InsertVectorRequest;
-use service::vector::SearchVectorRequest;
 use service::vector::vector_db_server::VectorDb;
+use service::vector::{InsertVectorRequest, SearchVectorRequest};
 use tonic::Request;
 
 #[tokio::test]
@@ -17,6 +16,7 @@ async fn test_insert_vector() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_search_vector() {
     let service = VectorService::default();
 

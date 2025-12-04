@@ -1,9 +1,7 @@
 use std::sync::Arc;
-use storage::entity::Entity;
-use storage::entity::Id;
-use storage::entity::KeySuffix;
-use storage::entity::NodeData;
-use storage::vector_data::VectorData;
+
+use system::entity::{Entity, Id, KeySuffix, NodeData};
+use system::vector_data::VectorData;
 
 #[test]
 fn test_key_encoding() {

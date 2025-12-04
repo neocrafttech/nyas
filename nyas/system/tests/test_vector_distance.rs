@@ -2,9 +2,8 @@ use half::{bf16, f16};
 use nalgebra::DVector;
 use rand;
 use rand::Rng;
-use storage::metric::Distance;
-use storage::metric::MetricType;
-use storage::vector_data::VectorData;
+use system::metric::{Distance, MetricType};
+use system::vector_data::VectorData;
 
 fn norm(a: &DVector<f64>, b: &DVector<f64>) -> f64 {
     (a - b).norm()

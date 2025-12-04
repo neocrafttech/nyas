@@ -3,6 +3,10 @@ set -e
 
 RUST_VERSION="1.91.0"
 
+format() {
+    cargo +nightly fmt;
+}
+
 setup_rust(){
     echo "[INFO] Checking Rust installation..."
     if command -v rustc >/dev/null 2>&1; then
@@ -71,6 +75,7 @@ help() {
     echo
     echo "Commands:"
     echo "  setup   - Install Rust and cargo-nextest"
+    echo "  format  - Format the code"
     echo "  check   - Run cargo check, fmt, and clippy"
     echo "  build   - Only build the workspace (runs check first)"
     echo "  test    - Only run tests"
@@ -84,6 +89,9 @@ main() {
     case "$cmd" in
         setup)
             setup
+            ;;
+        format)
+            format
             ;;
         check)
             check

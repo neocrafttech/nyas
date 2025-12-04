@@ -17,4 +17,7 @@ tokio.workspace = true
 ordered-float.workspace = true
 dashmap.workspace = true
 rayon.workspace = true
-storage = { path = "../storage" }
+serde.workspace = true
+rkyv.workspace = true
+tracing.workspace = true
+system = { path = "../system" }

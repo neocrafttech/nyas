@@ -1,8 +1,8 @@
-use mimalloc::MiMalloc;
-use service::VectorService;
-use service::vector;
 use std::sync::Arc;
-use storage::vector_db::VectorDB;
+
+use mimalloc::MiMalloc;
+use service::{VectorService, vector};
+use system::vector_db::VectorDB;
 use tokio::sync::Mutex;
 
 #[global_allocator]

@@ -1,27 +1,24 @@
-use crate::in_mem_index::InMemIndex;
-use dashmap::DashMap;
-use dashmap::DashSet;
 use std::cmp::Ordering;
-use std::hash::Hash;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use storage::metric::MetricType;
-use storage::vector_data::VectorData;
-use storage::vector_point::VectorPoint;
 
-use std::fmt::Debug;
+use dashmap::{DashMap, DashSet};
+use system::metric::MetricType;
+use system::vector_data::VectorData;
+use system::vector_point::VectorPoint;
 
-pub struct InDiskIndex<ID>
-where
-    ID: Debug + Clone + Hash + Eq + PartialEq + Send + Sync + 'static,
-{
+use crate::disk_index_storage::DiskIndexStorage;
+use crate::in_mem_index::InMemIndex;
+
+pub struct InDiskIndex {
     /// Long-term index on SSD (simplified as in-memory for this demo)
-    lti: Arc<RwLock<InMemIndex<ID>>>,
+    lti: Arc<RwLock<DiskIndexStorage>>,
     /// Read-write temporary index
-    rw_temp_index: Arc<RwLock<InMemIndex<ID>>>,
+    rw_temp_index: Arc<RwLock<InMemIndex>>,
     /// Read-only temporary indices
-    ro_temp_indices: Arc<RwLock<Vec<InMemIndex<ID>>>>,
+    ro_temp_indices: Arc<RwLock<Vec<InMemIndex>>>,
     /// Delete list
-    delete_list: Arc<DashSet<Arc<ID>>>,
+    delete_list: Arc<DashSet<u64>>,
     /// Maximum size of temp index before merge
     max_temp_size: usize,
     /// Parameters
@@ -31,27 +28,29 @@ where
     metric: MetricType,
 }
 
-impl<ID> InDiskIndex<ID>
-where
-    ID: Debug + Clone + Hash + Eq + PartialEq + Send + Sync + 'static,
-{
+impl InDiskIndex {
     pub fn new(
         r: usize, alpha: f64, l_build: usize, max_temp_size: usize, metric: MetricType,
-    ) -> Self {
-        InDiskIndex {
-            lti: Arc::new(RwLock::new(InMemIndex::new(r, alpha, l_build, metric))),
-            rw_temp_index: Arc::new(RwLock::new(InMemIndex::new(r, alpha, l_build, metric))),
-            ro_temp_indices: Arc::new(RwLock::new(Vec::new())),
-            delete_list: Arc::new(DashSet::new()),
+    ) -> Result<Self, std::io::Error> {
+        let lti = Arc::new(RwLock::new(DiskIndexStorage::new()?));
+        let rw_temp_index = Arc::new(RwLock::new(InMemIndex::new(r, alpha, l_build, metric)));
+        let ro_temp_indices = Arc::new(RwLock::new(Vec::new()));
+        let delete_list = Arc::new(DashSet::new());
+
+        Ok(InDiskIndex {
+            lti,
+            rw_temp_index,
+            ro_temp_indices,
+            delete_list,
             max_temp_size,
             r,
             alpha,
             l_build,
             metric,
-        }
+        })
     }
 
-    pub fn insert(&self, point: &VectorPoint<ID>) -> Result<(), String> {
+    pub fn insert(&self, point: &VectorPoint) -> Result<(), String> {
         let mut rw_temp = self.rw_temp_index.write().unwrap();
         rw_temp.insert(point);
 
@@ -64,52 +63,56 @@ where
         Ok(())
     }
 
-    pub fn delete(&self, point_id: Arc<ID>) {
+    pub fn delete(&self, point_id: u64) {
         self.delete_list.insert(point_id);
     }
 
-    pub fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<Arc<ID>> {
-        let mut all_results = Vec::new();
+    pub fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
+        let mut visited_map: HashMap<u64, VectorPoint> = HashMap::new();
 
         // Search LTI
         let lti = self.lti.read().unwrap();
-        let lti_results = lti.search(query, k, l);
-        all_results.extend(lti_results);
+        lti.search(query, l, &mut visited_map);
 
         // Search RW-TempIndex
         let rw_temp = self.rw_temp_index.read().unwrap();
-        let rw_results = rw_temp.search(query, k, l);
-        all_results.extend(rw_results);
+        rw_temp.greedy_search_for_lti(query, l, &mut visited_map);
 
         // Search RO-TempIndices
         let ro_temps = self.ro_temp_indices.read().unwrap();
         for ro_temp in ro_temps.iter() {
-            let ro_results = ro_temp.search(query, k, l);
-            all_results.extend(ro_results);
+            ro_temp.greedy_search_for_lti(query, l, &mut visited_map);
         }
 
+        let mut result_with_dist: Vec<_> = visited_map
+            .iter()
+            .map(|(id, point)| (*id, point.distance_to_vector(query, self.metric)))
+            .collect();
+
+        if result_with_dist.len() > k {
+            let _ = result_with_dist.select_nth_unstable_by(k - 1, |a, b| {
+                a.1.partial_cmp(&b.1).unwrap_or(Ordering::Greater)
+            });
+            result_with_dist.truncate(k);
+        }
+
+        let mut top_k: Vec<u64> = result_with_dist.into_iter().map(|(id, _)| id).collect();
+
+        println!("Top K {:?}", top_k);
+
         // Filter out deleted points
-        all_results.retain(|id| !self.delete_list.contains(id));
+        top_k.retain(|id| !self.delete_list.contains(id));
 
         // Deduplicate and sort by distance
-        let mut unique_results: Vec<_> =
-            all_results.into_iter().collect::<DashSet<_>>().into_iter().collect();
-
-        // Get distances and sort
-        let lti_read = self.lti.read().unwrap();
-        let rw_read = self.rw_temp_index.read().unwrap();
-
-        unique_results.sort_by(|a, b| {
-            let dist_a = self.get_point_distance(a.clone(), query, &lti_read, &rw_read);
-            let dist_b = self.get_point_distance(b.clone(), query, &lti_read, &rw_read);
-            dist_a.partial_cmp(&dist_b).unwrap_or(Ordering::Equal)
-        });
+        let unique_results: Vec<_> =
+            top_k.into_iter().collect::<DashSet<_>>().into_iter().collect();
 
         unique_results.into_iter().take(k).collect()
     }
 
+    #[allow(dead_code)]
     fn get_point_distance(
-        &self, point_id: Arc<ID>, query: &VectorData, lti: &InMemIndex<ID>, rw: &InMemIndex<ID>,
+        &self, point_id: u64, query: &VectorData, lti: &InMemIndex, rw: &InMemIndex,
     ) -> f64 {
         if let Some(p) = lti.points.get(&point_id) {
             return p.distance_to_vector(query, self.metric);
@@ -136,7 +139,7 @@ where
         let snapshot = InMemIndex {
             graph: rw_temp.graph.clone(),
             points: rw_temp.points.clone(),
-            start_node: rw_temp.start_node.clone(),
+            start_node: rw_temp.start_node,
             r: rw_temp.r,
             alpha: rw_temp.alpha,
             l_build: rw_temp.l_build,
@@ -152,39 +155,95 @@ where
         Ok(())
     }
 
-    /// Streaming merge (simplified version)
-    pub fn streaming_merge(&self) -> Result<(), String> {
-        // Collect all points from RO-TempIndices
-        let ro_temps = self.ro_temp_indices.read().unwrap();
-        let mut all_inserts = Vec::new();
+    #[allow(dead_code)]
+    pub fn streaming_merge(&self) -> Result<(), std::io::Error> {
+        let deletes: Vec<_> = self.delete_list.iter().map(|e| *e).collect();
 
-        for ro_temp in ro_temps.iter() {
-            for point_ref in ro_temp.points.iter() {
-                all_inserts.push(point_ref.value().clone());
-            }
+        let mut ro_temps = self.ro_temp_indices.write().unwrap();
+
+        for ro_temp in ro_temps.iter_mut() {
+            ro_temp.delete(&deletes);
         }
         drop(ro_temps);
 
-        // Get delete list
-        let deletes: Vec<_> = self.delete_list.iter().map(|e| e.clone()).collect();
-
-        // Apply deletes to LTI
         let mut lti = self.lti.write().unwrap();
-        if !deletes.is_empty() {
-            lti.delete(&deletes);
+        let ro_temps = self.ro_temp_indices.read().unwrap();
+        for ro_temp in ro_temps.iter() {
+            lti.insert(ro_temp)?;
         }
 
-        // Apply inserts to LTI
-        for point in all_inserts {
-            lti.insert(&point);
-        }
+        drop(ro_temps);
         drop(lti);
 
-        // Clear RO-TempIndices and DeleteList
         let mut ro_temps = self.ro_temp_indices.write().unwrap();
         ro_temps.clear();
 
         self.delete_list.clear();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod in_disk_index_test {
+    use system::metric::MetricType;
+    use system::vector_data::VectorData;
+    use system::vector_point::VectorPoint;
+
+    use super::*;
+    use crate::in_mem_index::InMemIndex;
+
+    #[test]
+    fn test_in_disk_index() {
+        let system = InDiskIndex::new(32, 1.2, 50, 20, MetricType::L2)
+            .expect("Expects In Disk Index creation");
+
+        for i in 0..50 {
+            let vector = VectorData::from_f32(vec![i as f32, (i * 2) as f32]);
+            system.insert(&VectorPoint::new(i, vector)).unwrap();
+        }
+
+        system.delete(5);
+        system.delete(10);
+
+        let query = VectorData::from_f32(vec![25.0, 50.0]);
+        let results = system.search(&query, 5, 20);
+
+        assert!(!results.contains(&5));
+        assert!(!results.contains(&10));
+
+        println!("Search results: {:?}", results);
+    }
+
+    #[test]
+    fn test_streaming_merge() {
+        let system = InDiskIndex::new(32, 1.2, 50, 20, MetricType::L2)
+            .expect("Expects In Disk Index creation");
+        let mut in_mem_index = InMemIndex::new(32, 1.2, 50, MetricType::L2);
+
+        for i in 0..50 {
+            let vector = VectorData::from_f32(vec![i as f32, (i * 2) as f32, i as f32 / 2.0]);
+            let point = VectorPoint::new(i, vector);
+            system.insert(&point).unwrap();
+            in_mem_index.insert(&point);
+        }
+
+        system.streaming_merge().unwrap();
+
+        let query = VectorData::from_f32(vec![25.0, 50.0, 12.5]);
+        let results = system.search(&query, 5, 20);
+        println!("Disk Search results: {:?}", results);
+        let in_mem_results = in_mem_index.search(&query, 5, 20);
+        println!("In Memory Search results: {:?}", in_mem_results);
+        for result in [23, 24, 25, 26, 27] {
+            assert!(results.contains(&result));
+            assert!(in_mem_results.contains(&result));
+        }
+
+        let query = VectorData::from_f32(vec![20.0, 41.0, 12.5]);
+        let results = system.search(&query, 5, 20);
+        println!("Boundary Disk Search results: {:?}", results);
+        for result in [19, 20, 21, 22, 23] {
+            assert!(results.contains(&result));
+        }
     }
 }

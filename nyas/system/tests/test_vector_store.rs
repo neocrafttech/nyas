@@ -1,5 +1,4 @@
-use storage::writer::BatchWriter;
-use storage::writer::Writer;
+use system::writer::{BatchWriter, Writer};
 
 #[test]
 fn test_batch_writer() {

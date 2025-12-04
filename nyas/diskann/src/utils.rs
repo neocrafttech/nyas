@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
-use std::hash::Hash;
-
 use std::fmt::Debug;
+use std::hash::Hash;
 
 /// Priority queue element for search
 #[derive(Clone)]

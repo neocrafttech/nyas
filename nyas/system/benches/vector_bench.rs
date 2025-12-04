@@ -1,9 +1,10 @@
+use std::hint::black_box;
+
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use half::{bf16, f16};
 use rand::{Rng, rng};
-use std::hint::black_box;
-use storage::metric::{Distance, MetricType};
-use storage::vector_data::VectorData;
+use system::metric::{Distance, MetricType};
+use system::vector_data::VectorData;
 
 mod generators {
     use super::*;

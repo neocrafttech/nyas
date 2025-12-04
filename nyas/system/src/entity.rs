@@ -1,10 +1,14 @@
-use crate::vector_data::VectorData;
-use crate::{vector_store::VectorStore, writer::Writer};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
+
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+
+use crate::vector_data::VectorData;
+use crate::vector_store::VectorStore;
+use crate::writer::Writer;
 
 pub type Id = usize;
 

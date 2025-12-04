@@ -1,6 +1,5 @@
 use nalgebra::DVector;
-use storage::vector_data::VectorData;
-use storage::vector_data::VectorDataType;
+use system::vector_data::{VectorData, VectorDataType};
 
 #[test]
 fn test_conversions() {

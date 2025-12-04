@@ -15,4 +15,4 @@ mimalloc.workspace = true
 tokio.workspace = true
 tonic.workspace = true
 service = { path = "../service" }
-storage = { path = "../storage" }
+system = { path = "../system" }
