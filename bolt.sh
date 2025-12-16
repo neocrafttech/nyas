@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-RUST_VERSION="1.91.0"
+RUST_VERSION="1.92.0"
 
 format() {
     cargo +nightly fmt;
@@ -38,6 +38,12 @@ setup() {
     setup_rust
 }
 
+clean() {
+    echo "[INFO] Cleaning workspace..."
+    cargo clean
+    echo "[OK] Workspace cleaned!"
+}
+
 check() {
     echo "[INFO] Running cargo check..."
     cargo check
@@ -71,12 +77,13 @@ bench() {
 }
 
 help() {
-    echo "Usage: $0 [setup|check|build|test|bench|all|help]"
+    echo "Usage: $0 [setup|check|format|clean|build|test|bench|all|help]"
     echo
     echo "Commands:"
     echo "  setup   - Install Rust and cargo-nextest"
     echo "  format  - Format the code"
     echo "  check   - Run cargo check, fmt, and clippy"
+    echo "  clean   - Clean the workspace"
     echo "  build   - Only build the workspace (runs check first)"
     echo "  test    - Only run tests"
     echo "  bench   - Only run benchmarks"
@@ -95,6 +102,9 @@ main() {
             ;;
         check)
             check
+            ;;
+        clean)
+            clean
             ;;
         build)
             build

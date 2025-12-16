@@ -16,8 +16,8 @@ impl IndexView {
         Ok(IndexView { in_disk_index })
     }
 
-    pub fn insert(&self, point: &VectorPoint) -> Result<(), String> {
-        self.in_disk_index.insert(point)?;
+    pub async fn insert(&self, point: &VectorPoint) -> Result<(), String> {
+        self.in_disk_index.insert(point).await?;
         Ok(())
     }
 
@@ -25,7 +25,7 @@ impl IndexView {
         self.in_disk_index.delete(id);
     }
 
-    pub fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
-        self.in_disk_index.search(query, k, l)
+    pub async fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
+        self.in_disk_index.search(query, k, l).await
     }
 }

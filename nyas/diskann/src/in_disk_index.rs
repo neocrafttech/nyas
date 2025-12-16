@@ -1,11 +1,13 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use dashmap::{DashMap, DashSet};
 use system::metric::MetricType;
 use system::vector_data::VectorData;
 use system::vector_point::VectorPoint;
+use tokio::io;
+use tokio::sync::RwLock;
 
 use crate::disk_index_storage::DiskIndexStorage;
 use crate::in_mem_index::InMemIndex;
@@ -50,14 +52,14 @@ impl InDiskIndex {
         })
     }
 
-    pub fn insert(&self, point: &VectorPoint) -> Result<(), String> {
-        let mut rw_temp = self.rw_temp_index.write().unwrap();
+    pub async fn insert(&self, point: &VectorPoint) -> Result<(), String> {
+        let mut rw_temp = self.rw_temp_index.write().await;
         rw_temp.insert(point);
 
         // Check if we need to snapshot
         if rw_temp.size() >= self.max_temp_size {
             drop(rw_temp);
-            self.snapshot_temp_index()?;
+            self.snapshot_temp_index().await?;
         }
 
         Ok(())
@@ -67,19 +69,19 @@ impl InDiskIndex {
         self.delete_list.insert(point_id);
     }
 
-    pub fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
+    pub async fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
         let mut visited_map: HashMap<u64, VectorPoint> = HashMap::new();
 
         // Search LTI
-        let lti = self.lti.read().unwrap();
-        lti.search(query, l, &mut visited_map);
+        let lti = self.lti.read().await;
+        lti.search(query, l, &mut visited_map).await;
 
         // Search RW-TempIndex
-        let rw_temp = self.rw_temp_index.read().unwrap();
+        let rw_temp = self.rw_temp_index.read().await;
         rw_temp.greedy_search_for_lti(query, l, &mut visited_map);
 
         // Search RO-TempIndices
-        let ro_temps = self.ro_temp_indices.read().unwrap();
+        let ro_temps = self.ro_temp_indices.read().await;
         for ro_temp in ro_temps.iter() {
             ro_temp.greedy_search_for_lti(query, l, &mut visited_map);
         }
@@ -111,7 +113,7 @@ impl InDiskIndex {
     }
 
     #[allow(dead_code)]
-    fn get_point_distance(
+    async fn get_point_distance(
         &self, point_id: u64, query: &VectorData, lti: &InMemIndex, rw: &InMemIndex,
     ) -> f64 {
         if let Some(p) = lti.points.get(&point_id) {
@@ -121,7 +123,7 @@ impl InDiskIndex {
             return p.distance_to_vector(query, self.metric);
         }
 
-        let ro_temps = self.ro_temp_indices.read().unwrap();
+        let ro_temps = self.ro_temp_indices.read().await;
         for ro in ro_temps.iter() {
             if let Some(p) = ro.points.get(&point_id) {
                 return p.distance_to_vector(query, self.metric);
@@ -131,9 +133,9 @@ impl InDiskIndex {
     }
 
     /// Snapshot RW-TempIndex to RO-TempIndex
-    fn snapshot_temp_index(&self) -> Result<(), String> {
-        let mut rw_temp = self.rw_temp_index.write().unwrap();
-        let mut ro_temps = self.ro_temp_indices.write().unwrap();
+    async fn snapshot_temp_index(&self) -> Result<(), String> {
+        let mut rw_temp = self.rw_temp_index.write().await;
+        let mut ro_temps = self.ro_temp_indices.write().await;
 
         // Clone the current RW index to RO
         let snapshot = InMemIndex {
@@ -156,26 +158,26 @@ impl InDiskIndex {
     }
 
     #[allow(dead_code)]
-    pub fn streaming_merge(&self) -> Result<(), std::io::Error> {
+    pub async fn streaming_merge(&self) -> io::Result<()> {
         let deletes: Vec<_> = self.delete_list.iter().map(|e| *e).collect();
 
-        let mut ro_temps = self.ro_temp_indices.write().unwrap();
+        let mut ro_temps = self.ro_temp_indices.write().await;
 
         for ro_temp in ro_temps.iter_mut() {
             ro_temp.delete(&deletes);
         }
         drop(ro_temps);
 
-        let mut lti = self.lti.write().unwrap();
-        let ro_temps = self.ro_temp_indices.read().unwrap();
+        let mut lti = self.lti.write().await;
+        let ro_temps = self.ro_temp_indices.read().await;
         for ro_temp in ro_temps.iter() {
-            lti.insert(ro_temp)?;
+            lti.insert(ro_temp).await?;
         }
 
         drop(ro_temps);
         drop(lti);
 
-        let mut ro_temps = self.ro_temp_indices.write().unwrap();
+        let mut ro_temps = self.ro_temp_indices.write().await;
         ro_temps.clear();
 
         self.delete_list.clear();
@@ -192,21 +194,21 @@ mod in_disk_index_test {
     use super::*;
     use crate::in_mem_index::InMemIndex;
 
-    #[test]
-    fn test_in_disk_index() {
+    #[tokio::test]
+    async fn test_in_disk_index() {
         let system = InDiskIndex::new(32, 1.2, 50, 20, MetricType::L2)
             .expect("Expects In Disk Index creation");
 
         for i in 0..50 {
             let vector = VectorData::from_f32(vec![i as f32, (i * 2) as f32]);
-            system.insert(&VectorPoint::new(i, vector)).unwrap();
+            system.insert(&VectorPoint::new(i, vector)).await.unwrap();
         }
 
         system.delete(5);
         system.delete(10);
 
         let query = VectorData::from_f32(vec![25.0, 50.0]);
-        let results = system.search(&query, 5, 20);
+        let results = system.search(&query, 5, 20).await;
 
         assert!(!results.contains(&5));
         assert!(!results.contains(&10));
@@ -214,8 +216,8 @@ mod in_disk_index_test {
         println!("Search results: {:?}", results);
     }
 
-    #[test]
-    fn test_streaming_merge() {
+    #[tokio::test]
+    async fn test_streaming_merge() {
         let system = InDiskIndex::new(32, 1.2, 50, 20, MetricType::L2)
             .expect("Expects In Disk Index creation");
         let mut in_mem_index = InMemIndex::new(32, 1.2, 50, MetricType::L2);
@@ -223,14 +225,14 @@ mod in_disk_index_test {
         for i in 0..50 {
             let vector = VectorData::from_f32(vec![i as f32, (i * 2) as f32, i as f32 / 2.0]);
             let point = VectorPoint::new(i, vector);
-            system.insert(&point).unwrap();
+            system.insert(&point).await.unwrap();
             in_mem_index.insert(&point);
         }
 
-        system.streaming_merge().unwrap();
+        system.streaming_merge().await.unwrap();
 
         let query = VectorData::from_f32(vec![25.0, 50.0, 12.5]);
-        let results = system.search(&query, 5, 20);
+        let results = system.search(&query, 5, 20).await;
         println!("Disk Search results: {:?}", results);
         let in_mem_results = in_mem_index.search(&query, 5, 20);
         println!("In Memory Search results: {:?}", in_mem_results);
@@ -240,7 +242,7 @@ mod in_disk_index_test {
         }
 
         let query = VectorData::from_f32(vec![20.0, 41.0, 12.5]);
-        let results = system.search(&query, 5, 20);
+        let results = system.search(&query, 5, 20).await;
         println!("Boundary Disk Search results: {:?}", results);
         for result in [19, 20, 21, 22, 23] {
             assert!(results.contains(&result));
