@@ -239,6 +239,68 @@ impl VectorData {
             VectorDataType::F64 => Self::F64(f32_vec.into_iter().map(|x| x as f64).collect()),
         }
     }
+
+    pub fn slice(&self, start: usize, end: usize) -> Self {
+        match self {
+            Self::BF16(v) => Self::BF16(v[start..end].to_vec()),
+            Self::F16(v) => Self::F16(v[start..end].to_vec()),
+            Self::F32(v) => Self::F32(v[start..end].to_vec()),
+            Self::F64(v) => Self::F64(v[start..end].to_vec()),
+        }
+    }
+
+    //TODO : Use Simd
+    pub fn add(&mut self, other: &Self) {
+        match (self, other) {
+            (Self::BF16(a), Self::BF16(b)) => {
+                for (x, &y) in a.iter_mut().zip(b) {
+                    *x += y;
+                }
+            }
+            (Self::F16(a), Self::F16(b)) => {
+                for (x, &y) in a.iter_mut().zip(b) {
+                    *x += y;
+                }
+            }
+            (Self::F32(a), Self::F32(b)) => {
+                for (x, &y) in a.iter_mut().zip(b) {
+                    *x += y;
+                }
+            }
+            (Self::F64(a), Self::F64(b)) => {
+                for (x, &y) in a.iter_mut().zip(b) {
+                    *x += y;
+                }
+            }
+            _ => panic!("VectorData types do not match"),
+        }
+    }
+
+    //TODO : Use Simd
+    pub fn scale(&mut self, factor: f64) {
+        match self {
+            Self::BF16(v) => {
+                for x in v {
+                    *x *= bf16::from_f64(factor);
+                }
+            }
+            Self::F16(v) => {
+                for x in v {
+                    *x *= f16::from_f64(factor);
+                }
+            }
+            Self::F32(v) => {
+                for x in v {
+                    *x *= factor as f32;
+                }
+            }
+            Self::F64(v) => {
+                for x in v {
+                    *x *= factor;
+                }
+            }
+        }
+    }
 }
 
 /// Represents the numeric type of VectorData
