@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use dashmap::DashMap;
 use rayon::prelude::*;
@@ -12,11 +12,11 @@ use crate::utils::SearchCandidate;
 
 pub struct InMemIndex {
     /// Graph adjacency lists (out-neighbors)
-    pub graph: DashMap<u64, Vec<u64>>,
+    pub graph: DashMap<u32, Vec<u32>>,
     /// Points stored in the index
-    pub points: DashMap<u64, VectorPoint>,
+    pub points: DashMap<u32, VectorPoint>,
     /// Start node for navigation
-    pub start_node: Option<u64>,
+    pub start_node: Option<u32>,
     /// Maximum out-degree
     pub r: usize,
     /// Alpha parameter for RNG property
@@ -24,7 +24,7 @@ pub struct InMemIndex {
     /// Search list size for building
     pub l_build: usize,
     /// Thread-safe locks for concurrent access
-    pub locks: DashMap<u64, Arc<Mutex<()>>>,
+    pub locks: DashMap<u32, Arc<Mutex<()>>>,
     /// Metric type for distance calculation
     pub metric: MetricType,
 }
@@ -46,9 +46,14 @@ impl InMemIndex {
 
     pub fn insert(&mut self, point: &VectorPoint) {
         debug_assert!(self.alpha > 1.0);
+        let start_wall = SystemTime::now();
         self.points.insert(point.id, point.clone());
         self.locks.insert(point.id, Arc::new(Mutex::new(())));
-
+        println!(
+            "Insertion time to clone point: {:?} for point {:?} ",
+            start_wall.elapsed(),
+            point.id
+        );
         //Let's initialize the graph with the first point
         if self.start_node.is_none() {
             self.start_node = Some(point.id);
@@ -61,9 +66,27 @@ impl InMemIndex {
         let (_, visited) =
             self.greedy_search(self.start_node.unwrap(), &point.vector, 1, self.l_build);
 
+        println!(
+            "Insertion time greedy search: {:?} for point {:?} ",
+            start_wall.elapsed(),
+            point.id
+        );
+
         // Prune the visited point to get out-neighbors for the new point
         let out_neighbors = self.robust_prune(point.id, visited, self.alpha);
+
+        println!(
+            "Insertion time robust pruning: {:?} for point {:?} ",
+            start_wall.elapsed(),
+            point.id
+        );
+
         self.graph.insert(point.id, out_neighbors.clone());
+        println!(
+            "Insertion time graph insertion: {:?} for point {:?} ",
+            start_wall.elapsed(),
+            point.id
+        );
 
         // Add backward edges and prune if necessary
         for neighbor_id in &out_neighbors {
@@ -93,81 +116,82 @@ impl InMemIndex {
             }
         }
 
-        // Update start node to the most recently inserted point
-        self.start_node = Some(point.id);
+        println!(
+            "Insertion time backward edges: {:?} for point {:?} ",
+            start_wall.elapsed(),
+            point.id
+        );
     }
 
     pub fn greedy_search(
-        &self, start_id: u64, query: &VectorData, k: usize, l: usize,
-    ) -> (Vec<u64>, Vec<u64>) {
-        let mut candidates = BinaryHeap::new(); //min-heap
-        let mut visited = HashSet::new();
+        &self, start_id: u32, query: &VectorData, k: usize, l: usize,
+    ) -> (Vec<u32>, Vec<u32>) {
+        let mut candidates = BinaryHeap::with_capacity(l + 1); //min-heap
+        let mut top_l = BinaryHeap::with_capacity(l + 1); // max-heap (using Reverse)
 
-        let start_point = self.points.get(&start_id).unwrap();
+        let mut visited = HashSet::with_capacity(l * 2);
+        let mut expanded = Vec::with_capacity(l);
 
-        candidates.push(SearchCandidate {
-            point_id: start_id,
-            distance: start_point.distance_to_vector(query, self.metric),
-        });
+        let start_point = self.points.get(&start_id).expect("Start node not found");
+        let start_dist = start_point.distance_to_vector(query, self.metric);
 
-        while let Some(current) = candidates.pop()
-            && !visited.contains(&current.point_id)
-        {
-            visited.insert(current.point_id);
+        let start = SearchCandidate { point_id: start_id, distance: start_dist };
 
-            if let Some(neighbors) = self.graph.get(&current.point_id) {
-                for neighbor_id in neighbors.value() {
-                    if !visited.contains(neighbor_id) {
-                        self.push_candidate(*neighbor_id, query, l, &mut candidates);
+        candidates.push(start.clone());
+        top_l.push(std::cmp::Reverse(start));
+        visited.insert(start_id);
+
+        let mut worst_top_l_dist = start_dist;
+
+        while let Some(curr) = candidates.pop() {
+            if curr.distance > worst_top_l_dist && top_l.len() >= l {
+                break;
+            }
+            expanded.push(curr.point_id);
+
+            let Some(neighbors) = self.graph.get(&curr.point_id) else {
+                continue;
+            };
+
+            for &neighbor_id in neighbors.value() {
+                if !visited.insert(neighbor_id) {
+                    continue;
+                }
+
+                let Some(neighbor_point) = self.points.get(&neighbor_id) else {
+                    continue;
+                };
+
+                let dist = neighbor_point.distance_to_vector(query, self.metric);
+
+                if top_l.len() < l {
+                    let cand = SearchCandidate { point_id: neighbor_id, distance: dist };
+                    candidates.push(cand.clone());
+                    top_l.push(std::cmp::Reverse(cand));
+                    if dist > worst_top_l_dist {
+                        worst_top_l_dist = dist;
+                    }
+                } else if dist < worst_top_l_dist {
+                    let cand = SearchCandidate { point_id: neighbor_id, distance: dist };
+                    candidates.push(cand.clone());
+                    top_l.pop();
+                    top_l.push(std::cmp::Reverse(cand));
+                    if let Some(worst) = top_l.peek() {
+                        worst_top_l_dist = worst.0.distance;
                     }
                 }
             }
-
-            if visited.len() >= l {
-                break;
-            }
         }
 
-        let visited: Vec<u64> = visited.into_iter().collect();
-        let mut result_with_dist: Vec<_> = visited
-            .iter()
-            .filter_map(|id| {
-                self.points.get(id).map(|p| (id, p.distance_to_vector(query, self.metric)))
-            })
-            .collect();
+        let mut results: Vec<SearchCandidate> = top_l.into_iter().map(|r| r.0).collect();
+        results.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap());
 
-        if result_with_dist.len() > k {
-            let _ = result_with_dist.select_nth_unstable_by(k - 1, |a, b| {
-                a.1.partial_cmp(&b.1).unwrap_or(Ordering::Greater)
-            });
-            result_with_dist.truncate(k);
-        }
+        let top_k: Vec<u32> = results.iter().take(k).map(|c| c.point_id).collect();
 
-        let top_k: Vec<u64> = result_with_dist.into_iter().map(|(id, _)| *id).collect();
-
-        (top_k, visited)
+        (top_k, expanded)
     }
 
-    fn push_candidate(
-        &self, neighbor_id: u64, query: &VectorData, l: usize,
-        candidates: &mut BinaryHeap<SearchCandidate<u64>>,
-    ) {
-        if let Some(neighbor_point) = self.points.get(&neighbor_id) {
-            if candidates.len() < l {
-                candidates.push(SearchCandidate {
-                    point_id: neighbor_id,
-                    distance: neighbor_point.distance_to_vector(query, self.metric),
-                });
-            } else if let Some(mut worst) = candidates.peek_mut() {
-                let distance = neighbor_point.distance_to_vector(query, self.metric);
-                if distance < worst.distance {
-                    *worst = SearchCandidate { point_id: neighbor_id, distance };
-                }
-            }
-        }
-    }
-
-    fn robust_prune(&self, point_id: u64, mut candidates: Vec<u64>, alpha: f64) -> Vec<u64> {
+    fn robust_prune(&self, point_id: u32, mut candidates: Vec<u32>, alpha: f64) -> Vec<u32> {
         debug_assert!(alpha >= 1.0, "alpha must be >= 1.0");
 
         let point = match self.points.get(&point_id) {
@@ -187,85 +211,86 @@ impl InMemIndex {
             }
         }
 
-        // Step 2: N_out(p) ← {}
-        let mut new_neighbors = Vec::with_capacity(self.r);
-
-        // Step 3: while V ≠ {}
-        while !candidates.is_empty() {
-            let (best_idx, _) = candidates
-                .par_iter()
-                .enumerate()
-                .filter_map(|(i, cid)| {
-                    self.points.get(cid).map(|cp| (i, point.distance(&cp, self.metric)))
+        let mut candidate_data: Vec<SearchCandidate> = candidates
+            .into_par_iter()
+            .filter_map(|id| {
+                self.points.get(&id).map(|p| SearchCandidate {
+                    point_id: id,
+                    distance: point.distance(&p, self.metric),
                 })
-                .reduce(|| (usize::MAX, f64::MAX), |a, b| if a.1 < b.1 { a } else { b });
+            })
+            .collect();
 
-            if best_idx == usize::MAX {
-                break;
-            }
+        candidate_data.sort_by(|a, b| b.cmp(a));
 
-            let best_id = candidates.swap_remove(best_idx);
-            new_neighbors.push(best_id);
+        // Step 2 & 3: Prune candidates that don't satisfy the alpha-RNG condition
+        let mut new_neighbors = Vec::with_capacity(self.r);
+        let mut new_neighbor_points: Vec<VectorPoint> = Vec::with_capacity(self.r);
 
-            if new_neighbors.len() >= self.r {
-                break;
-            }
+        let start_wall = SystemTime::now();
 
-            // alpha-RNG filtering
-            let Some(best_point) = self.points.get(&best_id) else {
+        for candidate in candidate_data {
+            let Some(point_c) = self.points.get(&candidate.point_id) else {
                 continue;
             };
 
-            candidates = candidates
-                .into_par_iter()
-                .filter(|candidate_id| {
-                    if let Some(candidate_point) = self.points.get(candidate_id) {
-                        alpha * best_point.distance(&candidate_point, self.metric)
-                            > point.distance(&candidate_point, self.metric)
-                    } else {
-                        false
-                    }
-                })
-                .collect();
+            let keep = !new_neighbor_points.iter().any(|point_n| {
+                alpha * point_n.distance(&point_c, self.metric) <= candidate.distance
+            });
+
+            if keep {
+                new_neighbors.push(candidate.point_id);
+                new_neighbor_points.push(point_c.clone());
+            }
+            if new_neighbors.len() >= self.r {
+                break;
+            }
         }
+
+        let duration = start_wall.elapsed().unwrap();
+        println!("Wall time for robust_prune: {:?}", duration);
 
         new_neighbors
     }
 
-    pub fn delete(&mut self, delete_list: &[u64]) {
+    pub fn delete(&mut self, delete_list: &[u32]) {
         let delete_set: HashSet<_> = delete_list.iter().cloned().collect();
 
-        let mut updates = Vec::new();
+        let updates: Vec<_> = self
+            .graph
+            .par_iter()
+            .filter_map(|point_ref| {
+                let point_id = *point_ref.key();
+                if delete_set.contains(&point_id) {
+                    return None;
+                }
+                let neighbors = point_ref.value();
+                let deleted_neighbors: Vec<_> =
+                    neighbors.iter().filter(|&n| delete_set.contains(n)).cloned().collect();
 
-        for point_ref in self.graph.iter() {
-            let point_id = *point_ref.key();
-            if delete_set.contains(&point_id) {
-                continue;
-            }
-            let neighbors = point_ref.value();
-            let deleted_neighbors: Vec<_> =
-                neighbors.iter().filter(|&n| delete_set.contains(n)).cloned().collect();
+                if !deleted_neighbors.is_empty() {
+                    let mut candidates: HashSet<_> =
+                        neighbors.iter().filter(|&n| !delete_set.contains(n)).cloned().collect();
 
-            if !deleted_neighbors.is_empty() {
-                let mut candidates: HashSet<_> =
-                    neighbors.iter().filter(|&n| !delete_set.contains(n)).cloned().collect();
-
-                // Add neighbors of deleted neighbors
-                for deleted_id in &deleted_neighbors {
-                    if let Some(del_neighbors) = self.graph.get(deleted_id) {
-                        for n in del_neighbors.value() {
-                            if !delete_set.contains(n) {
-                                candidates.insert(*n);
+                    // Add neighbors of deleted neighbors
+                    for deleted_id in &deleted_neighbors {
+                        if let Some(del_neighbors) = self.graph.get(deleted_id) {
+                            for n in del_neighbors.value() {
+                                if !delete_set.contains(n) {
+                                    candidates.insert(*n);
+                                }
                             }
                         }
                     }
-                }
 
-                let candidate_vec: Vec<_> = candidates.into_iter().collect();
-                let new_neighbors = self.robust_prune(point_id, candidate_vec, self.alpha);
-                updates.push((point_id, new_neighbors));
-            }
-        }
+                    let candidate_vec: Vec<_> = candidates.into_iter().collect();
+                    let new_neighbors = self.robust_prune(point_id, candidate_vec, self.alpha);
+                    Some((point_id, new_neighbors))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         // Apply all updates after iteration completes
         for (point_id, new_neighbors) in updates {
@@ -279,12 +304,17 @@ impl InMemIndex {
             self.graph.remove(point_id);
             self.points.remove(point_id);
             self.locks.remove(point_id);
+
+            // Update start_node if it was deleted
+            if self.start_node == Some(*point_id) {
+                self.start_node = self.graph.iter().next().map(|r| *r.key());
+            }
         }
     }
 
     /// Search for k nearest neighbors
     #[allow(dead_code)]
-    pub(crate) fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
+    pub(crate) fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u32> {
         if let Some(start_id) = &self.start_node {
             let (result, _) = self.greedy_search(*start_id, query, k, l);
             result
@@ -294,35 +324,17 @@ impl InMemIndex {
     }
 
     pub(crate) fn greedy_search_for_lti(
-        &self, query: &VectorData, l: usize, vistited_map: &mut HashMap<u64, VectorPoint>,
+        &self, query: &VectorData, l: usize, visited_map: &mut HashMap<u32, VectorPoint>,
     ) {
-        let mut candidates = BinaryHeap::new();
-
-        let start_point =
-            self.start_node.and_then(|node| self.points.get(&node).map(|r| r.clone()));
-        let Some(start_point) = start_point else {
+        if self.start_node.is_none() {
             return;
-        };
-        candidates.push(SearchCandidate {
-            point_id: start_point.clone().id,
-            distance: start_point.distance_to_vector(query, self.metric),
-        });
+        }
+        let start_id = self.start_node.unwrap();
+        let (_, visited_ids) = self.greedy_search(start_id, query, l, l);
 
-        while let Some(current) = candidates.pop()
-            && !vistited_map.contains_key(&current.point_id)
-        {
-            vistited_map
-                .insert(current.point_id, self.points.get(&current.point_id).unwrap().clone());
-            if let Some(neighbors) = self.graph.get(&current.point_id) {
-                for neighbor_id in neighbors.value() {
-                    if !vistited_map.contains_key(neighbor_id) {
-                        self.push_candidate(*neighbor_id, query, l, &mut candidates);
-                    }
-                }
-            }
-
-            if vistited_map.len() >= l {
-                break;
+        for id in visited_ids {
+            if let Some(point) = self.points.get(&id) {
+                visited_map.insert(id, point.clone());
             }
         }
     }

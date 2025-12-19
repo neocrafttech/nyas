@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [ "nyas/diskann", "nyas/service", "nyas/system", "nyas/vecd"]
+members = ["examples", "nyas/diskann", "nyas/service", "nyas/system", "nyas/vecd"]
 
 [workspace.package]
 authors = ["Manish Kumar <manish@neocraft.tech>"]

@@ -11,8 +11,9 @@ pub struct IndexView {
 }
 
 impl IndexView {
-    pub fn new() -> Result<Self, Error> {
-        let in_disk_index = InDiskIndex::new(32, 1.2, 50, 20, MetricType::L2)?;
+    pub async fn new(index_name: &str) -> Result<Self, Error> {
+        let in_disk_index =
+            InDiskIndex::new(index_name, 32, 1.2, 128, 9999, MetricType::L2).await?;
         Ok(IndexView { in_disk_index })
     }
 
@@ -21,11 +22,14 @@ impl IndexView {
         Ok(())
     }
 
-    pub fn delete(&self, id: u64) {
+    pub fn delete(&self, id: u32) {
         self.in_disk_index.delete(id);
     }
 
-    pub async fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
+    pub async fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u32> {
+        //TODO: Implement streaming merge as background task
+        let result = self.in_disk_index.streaming_merge().await;
+        println!("Streaming merge result: {:?}", result);
         self.in_disk_index.search(query, k, l).await
     }
 }

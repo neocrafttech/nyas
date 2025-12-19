@@ -15,7 +15,7 @@ memmap2.workspace = true
 rand.workspace = true
 tokio.workspace = true
 ordered-float.workspace = true
-dashmap.workspace = true
+dashmap = { version = "6.0.1", features = ["rayon"] }
 rayon.workspace = true
 serde.workspace = true
 rkyv.workspace = true
