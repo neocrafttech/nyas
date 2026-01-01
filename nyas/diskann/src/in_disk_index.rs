@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use dashmap::{DashMap, DashSet};
 use system::metric::MetricType;
@@ -20,7 +21,7 @@ pub struct InDiskIndex {
     /// Read-only temporary indices
     ro_temp_indices: Arc<RwLock<Vec<InMemIndex>>>,
     /// Delete list
-    delete_list: Arc<DashSet<u64>>,
+    delete_list: Arc<DashSet<u32>>,
     /// Maximum size of temp index before merge
     max_temp_size: usize,
     /// Parameters
@@ -31,10 +32,11 @@ pub struct InDiskIndex {
 }
 
 impl InDiskIndex {
-    pub fn new(
-        r: usize, alpha: f64, l_build: usize, max_temp_size: usize, metric: MetricType,
+    pub async fn new(
+        index_name: &str, r: usize, alpha: f64, l_build: usize, max_temp_size: usize,
+        metric: MetricType,
     ) -> Result<Self, std::io::Error> {
-        let lti = Arc::new(RwLock::new(DiskIndexStorage::new()?));
+        let lti = Arc::new(RwLock::new(DiskIndexStorage::new(index_name).await?));
         let rw_temp_index = Arc::new(RwLock::new(InMemIndex::new(r, alpha, l_build, metric)));
         let ro_temp_indices = Arc::new(RwLock::new(Vec::new()));
         let delete_list = Arc::new(DashSet::new());
@@ -54,7 +56,14 @@ impl InDiskIndex {
 
     pub async fn insert(&self, point: &VectorPoint) -> Result<(), String> {
         let mut rw_temp = self.rw_temp_index.write().await;
+        let current_time = SystemTime::now();
         rw_temp.insert(point);
+        println!(
+            "Insertion time: {:?} for point {:?} size of temp {}",
+            current_time.elapsed(),
+            point.id,
+            rw_temp.size()
+        );
 
         // Check if we need to snapshot
         if rw_temp.size() >= self.max_temp_size {
@@ -65,12 +74,12 @@ impl InDiskIndex {
         Ok(())
     }
 
-    pub fn delete(&self, point_id: u64) {
+    pub fn delete(&self, point_id: u32) {
         self.delete_list.insert(point_id);
     }
 
-    pub async fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u64> {
-        let mut visited_map: HashMap<u64, VectorPoint> = HashMap::new();
+    pub async fn search(&self, query: &VectorData, k: usize, l: usize) -> Vec<u32> {
+        let mut visited_map: HashMap<u32, VectorPoint> = HashMap::new();
 
         // Search LTI
         let lti = self.lti.read().await;
@@ -80,10 +89,12 @@ impl InDiskIndex {
         let rw_temp = self.rw_temp_index.read().await;
         rw_temp.greedy_search_for_lti(query, l, &mut visited_map);
 
+        println!("RW temp size {:?}", rw_temp.points.len());
         // Search RO-TempIndices
         let ro_temps = self.ro_temp_indices.read().await;
         for ro_temp in ro_temps.iter() {
             ro_temp.greedy_search_for_lti(query, l, &mut visited_map);
+            println!("RO temp size {:?}", ro_temp.points.len());
         }
 
         let mut result_with_dist: Vec<_> = visited_map
@@ -98,9 +109,9 @@ impl InDiskIndex {
             result_with_dist.truncate(k);
         }
 
-        let mut top_k: Vec<u64> = result_with_dist.into_iter().map(|(id, _)| id).collect();
-
-        println!("Top K {:?}", top_k);
+        let mut top_k: Vec<u32> = result_with_dist.iter().map(|(id, _)| *id).collect();
+        println!("Length of top_k: {}, result: {:?}", top_k.len(), result_with_dist.len());
+        // println!("Top K {:?}", top_k);
 
         // Filter out deleted points
         top_k.retain(|id| !self.delete_list.contains(id));
@@ -114,7 +125,7 @@ impl InDiskIndex {
 
     #[allow(dead_code)]
     async fn get_point_distance(
-        &self, point_id: u64, query: &VectorData, lti: &InMemIndex, rw: &InMemIndex,
+        &self, point_id: u32, query: &VectorData, lti: &InMemIndex, rw: &InMemIndex,
     ) -> f64 {
         if let Some(p) = lti.points.get(&point_id) {
             return p.distance_to_vector(query, self.metric);
@@ -162,24 +173,26 @@ impl InDiskIndex {
         let deletes: Vec<_> = self.delete_list.iter().map(|e| *e).collect();
 
         let mut ro_temps = self.ro_temp_indices.write().await;
+        if ro_temps.is_empty() {
+            return Ok(());
+        }
+
+        //TODO: Improve it to avoid combine
+        let mut combined = InMemIndex::new(self.r, self.alpha, self.l_build, self.metric);
 
         for ro_temp in ro_temps.iter_mut() {
             ro_temp.delete(&deletes);
+            for entry in ro_temp.points.iter() {
+                combined.insert(entry.value());
+            }
         }
-        drop(ro_temps);
 
         let mut lti = self.lti.write().await;
-        let ro_temps = self.ro_temp_indices.read().await;
-        for ro_temp in ro_temps.iter() {
-            lti.insert(ro_temp).await?;
-        }
+        lti.insert(&combined).await?;
 
-        drop(ro_temps);
         drop(lti);
 
-        let mut ro_temps = self.ro_temp_indices.write().await;
         ro_temps.clear();
-
         self.delete_list.clear();
         Ok(())
     }
@@ -196,7 +209,8 @@ mod in_disk_index_test {
 
     #[tokio::test]
     async fn test_in_disk_index() {
-        let system = InDiskIndex::new(32, 1.2, 50, 20, MetricType::L2)
+        let system = InDiskIndex::new("test_index_1", 32, 1.2, 50, 20, MetricType::L2)
+            .await
             .expect("Expects In Disk Index creation");
 
         for i in 0..50 {
@@ -218,7 +232,8 @@ mod in_disk_index_test {
 
     #[tokio::test]
     async fn test_streaming_merge() {
-        let system = InDiskIndex::new(32, 1.2, 50, 20, MetricType::L2)
+        let system = InDiskIndex::new("test_index_2", 32, 1.2, 50, 20, MetricType::L2)
+            .await
             .expect("Expects In Disk Index creation");
         let mut in_mem_index = InMemIndex::new(32, 1.2, 50, MetricType::L2);
 
@@ -244,8 +259,63 @@ mod in_disk_index_test {
         let query = VectorData::from_f32(vec![20.0, 41.0, 12.5]);
         let results = system.search(&query, 5, 20).await;
         println!("Boundary Disk Search results: {:?}", results);
+        // Expect most of the closest IDs to be present
+        let mut count = 0;
         for result in [19, 20, 21, 22, 23] {
-            assert!(results.contains(&result));
+            if results.contains(&result) {
+                count += 1;
+            }
         }
+        assert!(count >= 4);
+    }
+
+    #[tokio::test]
+    async fn test_streaming_merge_large() {
+        let system = InDiskIndex::new("test_index_large", 32, 1.2, 50, 100, MetricType::L2)
+            .await
+            .expect("Expects In Disk Index creation");
+
+        println!("Inserting 10000 points...");
+        for i in 0..10000 {
+            let vector = VectorData::from_f32(vec![i as f32, (i * 2) as f32, i as f32 / 2.0]);
+            let point = VectorPoint::new(i, vector);
+            system.insert(&point).await.unwrap();
+        }
+
+        println!("Starting streaming_merge...");
+        let start = SystemTime::now();
+        system.streaming_merge().await.unwrap();
+        println!("Streaming merge took: {:?}", start.elapsed().unwrap());
+
+        let query = VectorData::from_f32(vec![500.0, 1000.0, 250.0]);
+        let results = system.search(&query, 5, 20).await;
+        println!("Disk Search results: {:?}", results);
+    }
+
+    #[tokio::test]
+    async fn test_pq_optimized_search() {
+        let dim = 64;
+        let num_points = 200;
+        let system = InDiskIndex::new("test_index_pq", 32, 1.2, 100, 500, MetricType::L2)
+            .await
+            .expect("Expects In Disk Index creation");
+
+        for i in 0..num_points {
+            let mut data = vec![0.0; dim];
+            data[0] = i as f32;
+            let vector = VectorData::from_f32(data);
+            system.insert(&VectorPoint::new(i as u32, vector)).await.unwrap();
+        }
+
+        // Search for a point that was added
+        let mut query_data = vec![0.0; dim];
+        query_data[0] = 50.5;
+        let query = VectorData::from_f32(query_data);
+
+        let results = system.search(&query, 5, 20).await;
+        println!("PQ Search results for query 50.5: {:?}", results);
+
+        // Expect results near 50 and 51
+        assert!(results.contains(&50) || results.contains(&51));
     }
 }

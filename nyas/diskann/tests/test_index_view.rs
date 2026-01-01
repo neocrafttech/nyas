@@ -4,7 +4,7 @@ use system::vector_point::VectorPoint;
 
 #[tokio::test]
 async fn test_index_view() {
-    let index_view = IndexView::new().expect("Failed to create IndexView");
+    let index_view = IndexView::new("index_view").await.expect("Failed to create IndexView");
 
     for i in 0..50 {
         let vector = VectorData::from_f32(vec![i as f32, (i * 2) as f32]);

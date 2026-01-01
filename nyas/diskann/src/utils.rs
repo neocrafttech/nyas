@@ -1,55 +1,37 @@
 use std::cmp::Ordering;
-use std::fmt::Debug;
-use std::hash::Hash;
 
 /// Priority queue element for search
 #[derive(Clone)]
-pub struct SearchCandidate<ID>
-where
-    ID: Debug + Clone + Hash + PartialEq + Eq,
-{
-    pub point_id: ID,
+pub struct SearchCandidate {
+    pub point_id: u32,
     pub distance: f64,
 }
 
-impl<ID> PartialEq for SearchCandidate<ID>
-where
-    ID: Debug + Clone + Hash + PartialEq + Eq,
-{
+impl PartialEq for SearchCandidate {
     fn eq(&self, other: &Self) -> bool {
-        self.distance == other.distance
+        self.distance == other.distance && self.point_id == other.point_id
     }
 }
 
-impl<ID> Eq for SearchCandidate<ID> where ID: Debug + Clone + Hash + PartialEq + Eq {}
+impl Eq for SearchCandidate {}
 
-#[allow(clippy::non_canonical_partial_ord_impl)]
-impl<ID> PartialOrd for SearchCandidate<ID>
-where
-    ID: Debug + Clone + Hash + PartialEq + Eq,
-{
+impl PartialOrd for SearchCandidate {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        // Reverse for min-heap behavior
-        other.distance.partial_cmp(&self.distance)
+        Some(self.cmp(other))
     }
 }
 
-impl<ID> Ord for SearchCandidate<ID>
-where
-    ID: Debug + Clone + Hash + PartialEq + Eq,
-{
+impl Ord for SearchCandidate {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.partial_cmp(other) {
+        // Reverse for min-heap (smaller distance = higher priority)
+        match other.distance.partial_cmp(&self.distance) {
+            Some(Ordering::Equal) => self.point_id.cmp(&other.point_id),
             Some(ord) => ord,
-            None => {
-                if self.distance.is_nan() && other.distance.is_nan() {
-                    return Ordering::Equal;
-                }
-                if self.distance.is_nan() {
-                    return Ordering::Greater;
-                }
-                Ordering::Less
-            }
+            None => match (self.distance.is_nan(), other.distance.is_nan()) {
+                (false, true) => Ordering::Less,
+                (true, false) => Ordering::Greater,
+                _ => self.point_id.cmp(&other.point_id),
+            },
         }
     }
 }

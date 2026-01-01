@@ -5,17 +5,17 @@ use crate::vector_data::VectorData;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Archive)]
 pub struct VectorPoint {
-    pub id: u64,
+    pub id: u32,
     pub vector: VectorData,
 }
 
 impl VectorPoint {
-    pub fn new(id: u64, vector: VectorData) -> Self {
+    pub fn new(id: u32, vector: VectorData) -> Self {
         VectorPoint { id, vector }
     }
 
     pub fn size_bytes(&self) -> usize {
-        std::mem::size_of::<u64>() + self.vector.size_bytes()
+        std::mem::size_of::<u32>() + self.vector.size_bytes()
     }
 
     pub fn distance(&self, other: &VectorPoint, metric: MetricType) -> f64 {

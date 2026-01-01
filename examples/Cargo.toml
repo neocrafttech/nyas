@@ -1,0 +1,20 @@
+[package]
+name = "nyas-examples"
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+diskann = { path = "../nyas/diskann" }
+system = { path = "../nyas/system" }
+tokio.workspace = true
+cpu-time = "1.0.0"
+
+[[bin]]
+name = "sift10k_index"
+path = "src/sift10k_index.rs"
