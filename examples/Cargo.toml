@@ -18,3 +18,7 @@ cpu-time = "1.0.0"
 [[bin]]
 name = "sift10k_index"
 path = "src/sift10k_index.rs"
+
+[[bin]]
+name = "sift1m_index"
+path = "src/sift1m_index.rs"
