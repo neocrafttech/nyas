@@ -11,21 +11,21 @@ mod index_utils;
 
 #[tokio::main]
 async fn main() -> io::Result<()> {
-    let base_folder = "examples/data/siftsmall";
+    let base_folder = "examples/data/sift";
     let start_cpu = ProcessTime::now();
     let start_wall = SystemTime::now();
 
     let (base, query, ground_truth) = tokio::try_join!(
-        SiftDataset::from_fvecs(format!("{}/siftsmall_base.fvecs", base_folder)),
-        SiftDataset::from_fvecs(format!("{}/siftsmall_query.fvecs", base_folder)),
-        SiftDataset::from_ivecs(format!("{}/siftsmall_groundtruth.ivecs", base_folder))
+        SiftDataset::from_fvecs(format!("{}/sift_base.fvecs", base_folder)),
+        SiftDataset::from_fvecs(format!("{}/sift_query.fvecs", base_folder)),
+        SiftDataset::from_ivecs(format!("{}/sift_groundtruth.ivecs", base_folder))
     )?;
 
     println!("Base dataset: {} vectors of dimension {}", base.vectors.len(), base.dimension);
     println!("Query dataset: {} vectors of dimension {}", query.vectors.len(), query.dimension);
     println!("Ground truth: {} queries", ground_truth.len());
 
-    let index_name = "sift10k";
+    let index_name = "sift1m";
     let index_view = IndexView::new(index_name).await.expect("Failed to create IndexView");
 
     let path = Path::new(index_name);

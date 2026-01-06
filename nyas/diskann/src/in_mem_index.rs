@@ -1,6 +1,5 @@
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
 
 use dashmap::DashMap;
 use rayon::prelude::*;
@@ -46,14 +45,8 @@ impl InMemIndex {
 
     pub fn insert(&mut self, point: &VectorPoint) {
         debug_assert!(self.alpha > 1.0);
-        let start_wall = SystemTime::now();
         self.points.insert(point.id, point.clone());
         self.locks.insert(point.id, Arc::new(Mutex::new(())));
-        println!(
-            "Insertion time to clone point: {:?} for point {:?} ",
-            start_wall.elapsed(),
-            point.id
-        );
         //Let's initialize the graph with the first point
         if self.start_node.is_none() {
             self.start_node = Some(point.id);
@@ -66,27 +59,10 @@ impl InMemIndex {
         let (_, visited) =
             self.greedy_search(self.start_node.unwrap(), &point.vector, 1, self.l_build);
 
-        println!(
-            "Insertion time greedy search: {:?} for point {:?} ",
-            start_wall.elapsed(),
-            point.id
-        );
-
         // Prune the visited point to get out-neighbors for the new point
         let out_neighbors = self.robust_prune(point.id, visited, self.alpha);
 
-        println!(
-            "Insertion time robust pruning: {:?} for point {:?} ",
-            start_wall.elapsed(),
-            point.id
-        );
-
         self.graph.insert(point.id, out_neighbors.clone());
-        println!(
-            "Insertion time graph insertion: {:?} for point {:?} ",
-            start_wall.elapsed(),
-            point.id
-        );
 
         // Add backward edges and prune if necessary
         for neighbor_id in &out_neighbors {
@@ -115,12 +91,6 @@ impl InMemIndex {
                 }
             }
         }
-
-        println!(
-            "Insertion time backward edges: {:?} for point {:?} ",
-            start_wall.elapsed(),
-            point.id
-        );
     }
 
     pub fn greedy_search(
@@ -227,8 +197,6 @@ impl InMemIndex {
         let mut new_neighbors = Vec::with_capacity(self.r);
         let mut new_neighbor_points: Vec<VectorPoint> = Vec::with_capacity(self.r);
 
-        let start_wall = SystemTime::now();
-
         for candidate in candidate_data {
             let Some(point_c) = self.points.get(&candidate.point_id) else {
                 continue;
@@ -246,9 +214,6 @@ impl InMemIndex {
                 break;
             }
         }
-
-        let duration = start_wall.elapsed().unwrap();
-        println!("Wall time for robust_prune: {:?}", duration);
 
         new_neighbors
     }

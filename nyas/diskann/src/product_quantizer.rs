@@ -3,6 +3,7 @@ use system::metric::{Distance, MetricType};
 use system::vector_data::VectorData;
 
 #[allow(dead_code)]
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug)]
 pub struct ProductQuantizer {
     /// Number of subspaces
     pub num_subspaces: usize,
@@ -125,32 +126,6 @@ impl ProductQuantizer {
             }
         }
         best_u8
-    }
-
-    pub fn compute_lut(&self, query: &VectorData) -> Vec<Vec<f64>> {
-        let mut lut = vec![vec![0.0; self.centroids_per_subspace]; self.num_subspaces];
-
-        for (sub_idx, item) in lut.iter_mut().enumerate() {
-            let start = sub_idx * self.subspace_dim;
-            let query_sub_vec = query.slice(start, start + self.subspace_dim);
-            let subspace_codebook = &self.codebook[sub_idx];
-
-            for (k_idx, centroid) in subspace_codebook.iter().enumerate() {
-                item[k_idx] = query_sub_vec.distance(centroid, MetricType::L2Squared);
-            }
-        }
-        lut
-    }
-
-    pub fn estimate_distance(&self, lut: &[Vec<f64>], codes: &[u8]) -> f64 {
-        let mut dist_approx = 0.0;
-        debug_assert_eq!(lut.len(), self.num_subspaces);
-        debug_assert_eq!(codes.len(), self.num_subspaces);
-
-        for (sub_idx, centroid_idx) in codes.iter().enumerate() {
-            dist_approx += lut[sub_idx][*centroid_idx as usize];
-        }
-        dist_approx
     }
 }
 
